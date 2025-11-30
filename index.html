@@ -97,10 +97,10 @@
 
     <div class="container">
         <div id="loadingMsg" class="loading">
-            <strong>🎮 AR Physics Master</strong>
+            <strong>🏀 AR Basketball Master</strong>
             <div class="spinner"></div>
             <div>Cargando cámara...</div>
-            <small>Permite el acceso a tu cámara</small>
+            <small>¡Usa tus manos para encestar!</small>
         </div>
         <div id="errorMsg" class="error">
             <strong>⚠️ Error</strong>
@@ -130,21 +130,30 @@
         });
 
         // --- PARÁMETROS DE FÍSICA ---
-        const GRAVITY = 0.0015;
-        const FRICTION = 0.99;
-        const BOUNCE = 0.6;
-        const HIT_FORCE_MULTIPLIER = 1.5; // Reducido de 2.5 para menos velocidad
+        const GRAVITY = 0.0008; // Reducido de 0.0015 para caída más lenta
+        const FRICTION = 0.985; // Reducido de 0.99 para más fricción
+        const BOUNCE = 0.75; // Aumentado de 0.6 para mejor rebote
+        const MIN_BOUNCE_VELOCITY = 0.003; // Velocidad mínima para rebotar
+        const HIT_FORCE_MULTIPLIER = 1.5;
 
         // --- OBJETO PELOTA ---
         let ball = {
             x: 0.5, y: 0.3,
             vx: 0, vy: 0,
-            radius: 0.075,
-            color: '#FFD700',
+            radius: 0.065, // Un poco más pequeña para basketball
+            color: '#FF6B35', // Naranja tipo basketball
             isDragging: false,
             draggingHandId: null,
             lastX: 0.5, lastY: 0.5
         };
+
+        // --- CANASTAS DE BASKETBALL ---
+        const baskets = [
+            { x: 0.2, y: 0.15, width: 0.15, rimY: 0.18, scored: false },
+            { x: 0.65, y: 0.15, width: 0.15, rimY: 0.18, scored: false }
+        ];
+
+        let score = 0;
 
         // --- ESTADOS DE MANO ---
         const handStates = {};
@@ -164,10 +173,15 @@
                 const r = ball.radius;
                 
                 // MANTENER LA PELOTA 100% DENTRO DE LA PANTALLA
-                // Límite inferior
+                // Límite inferior - SIEMPRE REBOTA
                 if (ball.y + r > 1) { 
-                    ball.y = 1 - r; 
-                    ball.vy *= -BOUNCE; 
+                    ball.y = 1 - r;
+                    // Si tiene velocidad mínima, rebota, sino le damos un pequeño impulso
+                    if (Math.abs(ball.vy) < MIN_BOUNCE_VELOCITY) {
+                        ball.vy = -MIN_BOUNCE_VELOCITY * 3; // Impulso pequeño hacia arriba
+                    } else {
+                        ball.vy *= -BOUNCE;
+                    }
                 }
                 // Límite superior
                 if (ball.y - r < 0) { 
@@ -184,6 +198,9 @@
                     ball.x = r; 
                     ball.vx *= -BOUNCE; 
                 }
+
+                // Verificar anotación en canastas
+                checkBasketScore();
             } else {
                 // TAMBIÉN LIMITAR CUANDO SE ESTÁ ARRASTRANDO
                 const r = ball.radius;
@@ -191,6 +208,33 @@
                 if (ball.x - r < 0) ball.x = r;
                 if (ball.y + r > 1) ball.y = 1 - r;
                 if (ball.y - r < 0) ball.y = r;
+            }
+        }
+
+        function checkBasketScore() {
+            for (let basket of baskets) {
+                const basketCenterX = basket.x + basket.width / 2;
+                const rimY = basket.rimY;
+                
+                // Verificar si la pelota está dentro del área horizontal de la canasta
+                const isInBasketX = ball.x > basket.x && ball.x < (basket.x + basket.width);
+                
+                // Verificar si la pelota está pasando por el aro (bajando)
+                const isAtRim = ball.y > rimY && ball.y < rimY + 0.05;
+                const isGoingDown = ball.vy > 0;
+                
+                if (isInBasketX && isAtRim && isGoingDown && !basket.scored) {
+                    // ¡CANASTA!
+                    basket.scored = true;
+                    score++;
+                    ball.color = '#00FF00'; // Verde al anotar
+                    
+                    // Efecto visual
+                    setTimeout(() => {
+                        ball.color = '#FF6B35'; // Volver a naranja
+                        basket.scored = false; // Resetear para poder anotar de nuevo
+                    }, 500);
+                }
             }
         }
 
@@ -216,8 +260,8 @@
                     const fingerVx = fingerX - lastState.lastFingerX;
                     const fingerVy = fingerY - lastState.lastFingerY;
 
-                    ball.vx += (fingerVx * 2.5) + (nx * 0.01);
-                    ball.vy += (fingerVy * 2.5) + (ny * 0.01);
+                    ball.vx += (fingerVx * HIT_FORCE_MULTIPLIER) + (nx * 0.01);
+                    ball.vy += (fingerVy * HIT_FORCE_MULTIPLIER) + (ny * 0.01);
                 }
 
                 ball.color = '#FF4500';
@@ -286,13 +330,22 @@
                         anyHandDragging = true;
                         ball.color = '#00FFFF';
 
-                        ball.vx = (cursorX - ball.lastX) * 1.5;
-                        ball.vy = (cursorY - ball.lastY) * 1.5;
+                        // Calcular velocidad pero con límite
+                        ball.vx = (cursorX - ball.lastX) * 1.2;
+                        ball.vy = (cursorY - ball.lastY) * 1.2;
 
                         ball.x = cursorX;
                         ball.y = cursorY;
-                        ball.lastX = cursorX;
-                        ball.lastY = cursorY;
+                        
+                        // Limitar mientras se arrastra
+                        const r = ball.radius;
+                        if (ball.x + r > 1) ball.x = 1 - r;
+                        if (ball.x - r < 0) ball.x = r;
+                        if (ball.y + r > 1) ball.y = 1 - r;
+                        if (ball.y - r < 0) ball.y = r;
+                        
+                        ball.lastX = ball.x;
+                        ball.lastY = ball.y;
 
                     } else if (!ball.isDragging && isPinching && distToBall < ball.radius * 1.3) {
                         ball.isDragging = true;
@@ -312,7 +365,7 @@
                     if (!ball.isDragging) {
                         const isColliding = resolveFingerCollision(indexTip.x, indexTip.y, handId);
                         if (!isColliding && !anyHandDragging) {
-                            ball.color = '#FFD700';
+                            ball.color = '#FF6B35'; // Naranja basketball
                         }
                     }
 
@@ -326,9 +379,9 @@
             if (ball.isDragging && !anyHandDragging) {
                 ball.isDragging = false;
                 ball.draggingHandId = null;
-                ball.color = '#FFD700';
+                ball.color = '#FF6B35';
             } else if (!ball.isDragging) {
-                ball.color = '#FFD700';
+                ball.color = '#FF6B35';
             }
 
             Object.assign(handStates, currentFingerPositions);
@@ -340,16 +393,40 @@
 
             updatePhysics();
 
-            // Renderizar pelota con tamaño adaptativo
+            // --- RENDERIZADO DE LA PELOTA ---
             const px = ball.x * canvasElement.width;
             const py = ball.y * canvasElement.height;
             const r = ball.radius * Math.min(canvasElement.width, canvasElement.height);
 
+            // Sombra de la pelota
+            canvasCtx.beginPath();
+            canvasCtx.arc(px, py + 5, r, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            canvasCtx.fill();
+
+            // Pelota con textura de basketball
             canvasCtx.beginPath();
             canvasCtx.arc(px, py, r, 0, 2 * Math.PI);
             canvasCtx.fillStyle = ball.color;
             canvasCtx.fill();
-            canvasCtx.lineWidth = 4;
+            
+            // Líneas de basketball
+            canvasCtx.strokeStyle = '#000000';
+            canvasCtx.lineWidth = 2;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(px - r, py);
+            canvasCtx.lineTo(px + r, py);
+            canvasCtx.stroke();
+            
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(px, py - r);
+            canvasCtx.lineTo(px, py + r);
+            canvasCtx.stroke();
+            
+            // Borde blanco
+            canvasCtx.beginPath();
+            canvasCtx.arc(px, py, r, 0, 2 * Math.PI);
+            canvasCtx.lineWidth = 3;
             canvasCtx.strokeStyle = 'white';
             canvasCtx.stroke();
             canvasCtx.restore();
