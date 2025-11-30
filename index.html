@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Physics Master - Multi-Hand</title>
+    <title>AR Ping Pong - Hand Game</title>
     <style>
         * {
             box-sizing: border-box;
@@ -12,7 +12,7 @@
             -webkit-tap-highlight-color: transparent;
         }
         body {
-            background-color: #1e1e1e;
+            background-color: #1a472a;
             color: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             overflow: hidden;
@@ -25,7 +25,7 @@
             position: relative;
             width: 100vw;
             height: 100vh;
-            background: #000;
+            background: #0a2515;
         }
         #input_video { 
             display: none; 
@@ -62,7 +62,7 @@
         }
         .spinner {
             border: 3px solid #333;
-            border-top: 3px solid #FFD700;
+            border-top: 3px solid #4CAF50;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -73,18 +73,41 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .error {
+        .game-over {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(255, 0, 0, 0.9);
-            padding: 20px;
-            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 20px;
             text-align: center;
-            max-width: 80%;
-            z-index: 20;
+            z-index: 15;
             display: none;
+            border: 3px solid #FFD700;
+        }
+        .game-over h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #FFD700;
+        }
+        .game-over p {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        .game-over button {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .game-over button:active {
+            transform: scale(0.95);
         }
     </style>
     
@@ -97,15 +120,18 @@
 
     <div class="container">
         <div id="loadingMsg" class="loading">
-            <strong>🏀 AR Basketball Master</strong>
+            <strong>🏓 AR Ping Pong</strong>
             <div class="spinner"></div>
             <div>Cargando cámara...</div>
-            <small>¡Usa tus manos para encestar!</small>
+            <small>¡Usa tus manos como raquetas!</small>
         </div>
-        <div id="errorMsg" class="error">
-            <strong>⚠️ Error</strong>
-            <p id="errorText"></p>
+        
+        <div id="gameOver" class="game-over">
+            <h1 id="winnerText">🏆 ¡GANADOR!</h1>
+            <p id="finalScore"></p>
+            <button onclick="resetGame()">🔄 Jugar de Nuevo</button>
         </div>
+        
         <video id="input_video" playsinline></video>
         <canvas id="output_canvas"></canvas>
     </div>
@@ -115,10 +141,11 @@
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
         const loadingMsg = document.getElementById('loadingMsg');
-        const errorMsg = document.getElementById('errorMsg');
-        const errorText = document.getElementById('errorText');
+        const gameOverDiv = document.getElementById('gameOver');
+        const winnerText = document.getElementById('winnerText');
+        const finalScore = document.getElementById('finalScore');
 
-        // Configurar canvas según el tamaño de la ventana
+        // Configurar canvas
         function resizeCanvas() {
             canvasElement.width = window.innerWidth;
             canvasElement.height = window.innerHeight;
@@ -129,142 +156,157 @@
             setTimeout(resizeCanvas, 100);
         });
 
-        // --- PARÁMETROS DE FÍSICA ---
-        const GRAVITY = 0.0008; // Reducido de 0.0015 para caída más lenta
-        const FRICTION = 0.985; // Reducido de 0.99 para más fricción
-        const BOUNCE = 0.75; // Aumentado de 0.6 para mejor rebote
-        const MIN_BOUNCE_VELOCITY = 0.003; // Velocidad mínima para rebotar
-        const HIT_FORCE_MULTIPLIER = 1.5;
+        // --- PARÁMETROS DE FÍSICA (MÁS LENTOS) ---
+        const GRAVITY = 0.0003; // Muy reducido
+        const FRICTION = 0.97; // Más fricción
+        const BOUNCE = 0.85; // Buen rebote
+        const HIT_FORCE_MULTIPLIER = 0.8; // Golpes más suaves
+        const MAX_SPEED = 0.015; // Límite de velocidad
 
         // --- OBJETO PELOTA ---
         let ball = {
-            x: 0.5, y: 0.3,
-            vx: 0, vy: 0,
-            radius: 0.065, // Un poco más pequeña para basketball
-            color: '#FF6B35', // Naranja tipo basketball
-            isDragging: false,
-            draggingHandId: null,
-            lastX: 0.5, lastY: 0.5
+            x: 0.5, y: 0.5,
+            vx: 0.005, vy: 0.003, // Velocidad inicial lenta
+            radius: 0.025, // Pelota pequeña de ping pong
+            color: '#FFFFFF',
+            lastHitBy: null // Para evitar golpes múltiples
         };
-
-        // --- CANASTAS DE BASKETBALL ---
-        const baskets = [
-            { x: 0.2, y: 0.15, width: 0.15, rimY: 0.18, scored: false },
-            { x: 0.65, y: 0.15, width: 0.15, rimY: 0.18, scored: false }
-        ];
-
-        let score = 0;
 
         // --- ESTADOS DE MANO ---
         const handStates = {};
+        
+        // --- PUNTUACIÓN ---
+        let scoreLeft = 0;
+        let scoreRight = 0;
+        const WINNING_SCORE = 5;
+        let gameActive = true;
 
         function calculateDistance(x1, y1, x2, y2) {
             return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
         }
 
+        function limitSpeed() {
+            const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (speed > MAX_SPEED) {
+                ball.vx = (ball.vx / speed) * MAX_SPEED;
+                ball.vy = (ball.vy / speed) * MAX_SPEED;
+            }
+        }
+
         function updatePhysics() {
-            if (!ball.isDragging) {
-                ball.vy += GRAVITY;
-                ball.vx *= FRICTION;
-                ball.vy *= FRICTION;
-                ball.x += ball.vx;
-                ball.y += ball.vy;
+            if (!gameActive) return;
 
-                const r = ball.radius;
-                
-                // MANTENER LA PELOTA 100% DENTRO DE LA PANTALLA
-                // Límite inferior - SIEMPRE REBOTA
-                if (ball.y + r > 1) { 
-                    ball.y = 1 - r;
-                    // Si tiene velocidad mínima, rebota, sino le damos un pequeño impulso
-                    if (Math.abs(ball.vy) < MIN_BOUNCE_VELOCITY) {
-                        ball.vy = -MIN_BOUNCE_VELOCITY * 3; // Impulso pequeño hacia arriba
-                    } else {
-                        ball.vy *= -BOUNCE;
-                    }
-                }
-                // Límite superior
-                if (ball.y - r < 0) { 
-                    ball.y = r; 
-                    ball.vy *= -BOUNCE; 
-                }
-                // Límite derecho
-                if (ball.x + r > 1) { 
-                    ball.x = 1 - r; 
-                    ball.vx *= -BOUNCE; 
-                }
-                // Límite izquierdo
-                if (ball.x - r < 0) { 
-                    ball.x = r; 
-                    ball.vx *= -BOUNCE; 
-                }
+            ball.vy += GRAVITY;
+            ball.vx *= FRICTION;
+            ball.vy *= FRICTION;
+            
+            limitSpeed(); // Limitar velocidad máxima
+            
+            ball.x += ball.vx;
+            ball.y += ball.vy;
 
-                // Verificar anotación en canastas
-                checkBasketScore();
+            const r = ball.radius;
+            
+            // Límites superior e inferior (rebote)
+            if (ball.y + r > 1) { 
+                ball.y = 1 - r; 
+                ball.vy *= -BOUNCE; 
+            }
+            if (ball.y - r < 0) { 
+                ball.y = r; 
+                ball.vy *= -BOUNCE; 
+            }
+            
+            // Límites izquierdo y derecho (PUNTO!)
+            if (ball.x - r < 0) {
+                // Punto para el jugador DERECHO
+                scoreRight++;
+                checkWinner();
+                resetBall('right');
+            }
+            if (ball.x + r > 1) {
+                // Punto para el jugador IZQUIERDO
+                scoreLeft++;
+                checkWinner();
+                resetBall('left');
+            }
+        }
+
+        function resetBall(lastScorer) {
+            // Resetear pelota al centro
+            ball.x = 0.5;
+            ball.y = 0.5;
+            
+            // Dirección hacia el que NO anotó
+            if (lastScorer === 'left') {
+                ball.vx = 0.005; // Hacia la derecha
             } else {
-                // TAMBIÉN LIMITAR CUANDO SE ESTÁ ARRASTRANDO
-                const r = ball.radius;
-                if (ball.x + r > 1) ball.x = 1 - r;
-                if (ball.x - r < 0) ball.x = r;
-                if (ball.y + r > 1) ball.y = 1 - r;
-                if (ball.y - r < 0) ball.y = r;
+                ball.vx = -0.005; // Hacia la izquierda
+            }
+            ball.vy = (Math.random() - 0.5) * 0.004; // Algo de variación vertical
+            ball.lastHitBy = null;
+        }
+
+        function checkWinner() {
+            if (scoreLeft >= WINNING_SCORE) {
+                endGame('IZQUIERDA');
+            } else if (scoreRight >= WINNING_SCORE) {
+                endGame('DERECHA');
             }
         }
 
-        function checkBasketScore() {
-            for (let basket of baskets) {
-                const basketCenterX = basket.x + basket.width / 2;
-                const rimY = basket.rimY;
-                
-                // Verificar si la pelota está dentro del área horizontal de la canasta
-                const isInBasketX = ball.x > basket.x && ball.x < (basket.x + basket.width);
-                
-                // Verificar si la pelota está pasando por el aro (bajando)
-                const isAtRim = ball.y > rimY && ball.y < rimY + 0.05;
-                const isGoingDown = ball.vy > 0;
-                
-                if (isInBasketX && isAtRim && isGoingDown && !basket.scored) {
-                    // ¡CANASTA!
-                    basket.scored = true;
-                    score++;
-                    ball.color = '#00FF00'; // Verde al anotar
-                    
-                    // Efecto visual
-                    setTimeout(() => {
-                        ball.color = '#FF6B35'; // Volver a naranja
-                        basket.scored = false; // Resetear para poder anotar de nuevo
-                    }, 500);
-                }
-            }
+        function endGame(winner) {
+            gameActive = false;
+            winnerText.textContent = `🏆 ¡GANÓ ${winner}!`;
+            finalScore.textContent = `Marcador Final: ${scoreLeft} - ${scoreRight}`;
+            gameOverDiv.style.display = 'block';
         }
 
-        function resolveFingerCollision(fingerX, fingerY, handId) {
-            const ballRadius = ball.radius;
-            const fingerRadius = 0.03;
+        function resetGame() {
+            scoreLeft = 0;
+            scoreRight = 0;
+            gameActive = true;
+            gameOverDiv.style.display = 'none';
+            resetBall('right');
+        }
+        window.resetGame = resetGame; // Hacer accesible globalmente
 
-            const dist = calculateDistance(fingerX, fingerY, ball.x, ball.y);
-            const minDist = ballRadius + fingerRadius;
+        function resolveHandCollision(handX, handY, handId, isLeft) {
+            // Evitar que la misma mano golpee múltiples veces seguidas
+            if (ball.lastHitBy === handId) return false;
 
-            if (dist < minDist) {
-                const dx = ball.x - fingerX;
-                const dy = ball.y - fingerY;
+            const handRadius = 0.08; // Área de golpeo de la mano
+            const dist = calculateDistance(handX, handY, ball.x, ball.y);
+
+            if (dist < ball.radius + handRadius) {
+                const dx = ball.x - handX;
+                const dy = ball.y - handY;
                 const nx = dx / dist;
                 const ny = dy / dist;
 
-                const overlap = minDist - dist;
-                ball.x += nx * overlap;
-                ball.y += ny * overlap;
+                // Empujar la pelota
+                const overlap = (ball.radius + handRadius) - dist;
+                ball.x += nx * overlap * 1.5;
+                ball.y += ny * overlap * 1.5;
 
+                // Transferencia de velocidad
                 const lastState = handStates[handId];
                 if (lastState) {
-                    const fingerVx = fingerX - lastState.lastFingerX;
-                    const fingerVy = fingerY - lastState.lastFingerY;
+                    const handVx = handX - lastState.lastHandX;
+                    const handVy = handY - lastState.lastHandY;
 
-                    ball.vx += (fingerVx * HIT_FORCE_MULTIPLIER) + (nx * 0.01);
-                    ball.vy += (fingerVy * HIT_FORCE_MULTIPLIER) + (ny * 0.01);
+                    ball.vx = (handVx * HIT_FORCE_MULTIPLIER) + (nx * 0.008);
+                    ball.vy = (handVy * HIT_FORCE_MULTIPLIER) + (ny * 0.008);
                 }
 
-                ball.color = '#FF4500';
+                ball.lastHitBy = handId;
+                ball.color = isLeft ? '#FF6B6B' : '#4ECDC4'; // Rojo o Cyan según lado
+                
+                setTimeout(() => {
+                    ball.color = '#FFFFFF';
+                    ball.lastHitBy = null;
+                }, 200);
+
                 return true;
             }
             return false;
@@ -276,7 +318,7 @@
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             
-            // Dibujar video ajustado al canvas
+            // Dibujar video
             const videoAspect = results.image.width / results.image.height;
             const canvasAspect = canvasElement.width / canvasElement.height;
             
@@ -295,96 +337,81 @@
             
             canvasCtx.drawImage(results.image, offsetX, offsetY, drawWidth, drawHeight);
 
-            let anyHandDragging = false;
-            const currentFingerPositions = {};
+            // --- DIBUJAR RED EN EL CENTRO ---
+            const netSegments = 20;
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            canvasCtx.lineWidth = 3;
+            for (let i = 0; i < netSegments; i++) {
+                if (i % 2 === 0) {
+                    canvasCtx.beginPath();
+                    canvasCtx.moveTo(canvasElement.width / 2, (i / netSegments) * canvasElement.height);
+                    canvasCtx.lineTo(canvasElement.width / 2, ((i + 1) / netSegments) * canvasElement.height);
+                    canvasCtx.stroke();
+                }
+            }
 
-            if (results.multiHandLandmarks) {
+            // --- DIBUJAR MARCADOR ---
+            canvasCtx.font = 'bold 60px Arial';
+            canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            canvasCtx.strokeStyle = 'black';
+            canvasCtx.lineWidth = 4;
+            
+            // Marcador izquierdo
+            const leftScoreX = canvasElement.width * 0.25;
+            const scoreY = 80;
+            canvasCtx.strokeText(scoreLeft, leftScoreX, scoreY);
+            canvasCtx.fillText(scoreLeft, leftScoreX, scoreY);
+            
+            // Marcador derecho
+            const rightScoreX = canvasElement.width * 0.75;
+            canvasCtx.strokeText(scoreRight, rightScoreX, scoreY);
+            canvasCtx.fillText(scoreRight, rightScoreX, scoreY);
+
+            // --- PROCESAR MANOS ---
+            const currentHandPositions = {};
+
+            if (results.multiHandLandmarks && results.multiHandedness) {
                 for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                     const landmarks = results.multiHandLandmarks[i];
+                    const handedness = results.multiHandedness[i];
+                    const isLeft = handedness.label === 'Left'; // En espejo, Left es derecha real
                     const handId = i;
 
-                    const indexTip = landmarks[8];
-                    const thumbTip = landmarks[4];
-
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 3});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 2, radius: 4});
-
-                    const pinchDist = calculateDistance(indexTip.x, indexTip.y, thumbTip.x, thumbTip.y);
-                    const isPinching = pinchDist < 0.06;
-
-                    const cursorX = (indexTip.x + thumbTip.x) / 2;
-                    const cursorY = (indexTip.y + thumbTip.y) / 2;
-
-                    if (isPinching) {
-                        canvasCtx.beginPath();
-                        canvasCtx.moveTo(indexTip.x * canvasElement.width, indexTip.y * canvasElement.height);
-                        canvasCtx.lineTo(thumbTip.x * canvasElement.width, thumbTip.y * canvasElement.height);
-                        canvasCtx.strokeStyle = 'white';
-                        canvasCtx.lineWidth = 5;
-                        canvasCtx.stroke();
-                    }
-
-                    const distToBall = calculateDistance(cursorX, cursorY, ball.x, ball.y);
-
-                    if (ball.isDragging && ball.draggingHandId === handId) {
-                        anyHandDragging = true;
-                        ball.color = '#00FFFF';
-
-                        // Calcular velocidad pero con límite
-                        ball.vx = (cursorX - ball.lastX) * 1.2;
-                        ball.vy = (cursorY - ball.lastY) * 1.2;
-
-                        ball.x = cursorX;
-                        ball.y = cursorY;
-                        
-                        // Limitar mientras se arrastra
-                        const r = ball.radius;
-                        if (ball.x + r > 1) ball.x = 1 - r;
-                        if (ball.x - r < 0) ball.x = r;
-                        if (ball.y + r > 1) ball.y = 1 - r;
-                        if (ball.y - r < 0) ball.y = r;
-                        
-                        ball.lastX = ball.x;
-                        ball.lastY = ball.y;
-
-                    } else if (!ball.isDragging && isPinching && distToBall < ball.radius * 1.3) {
-                        ball.isDragging = true;
-                        ball.draggingHandId = handId;
-                        anyHandDragging = true;
-                        ball.color = '#00FFFF';
-
-                        ball.vx = 0;
-                        ball.vy = 0;
-
-                        ball.x = cursorX;
-                        ball.y = cursorY;
-                        ball.lastX = cursorX;
-                        ball.lastY = cursorY;
-                    }
+                    // Obtener centro de la palma (promedio de varios puntos)
+                    const wrist = landmarks[0];
+                    const indexMcp = landmarks[5];
+                    const pinkyMcp = landmarks[17];
                     
-                    if (!ball.isDragging) {
-                        const isColliding = resolveFingerCollision(indexTip.x, indexTip.y, handId);
-                        if (!isColliding && !anyHandDragging) {
-                            ball.color = '#FF6B35'; // Naranja basketball
-                        }
+                    const palmX = (wrist.x + indexMcp.x + pinkyMcp.x) / 3;
+                    const palmY = (wrist.y + indexMcp.y + pinkyMcp.y) / 3;
+
+                    // Dibujar mano con color según lado
+                    const handColor = isLeft ? '#FF6B6B' : '#4ECDC4';
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: handColor, lineWidth: 3});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#FFFFFF', lineWidth: 2, radius: 4});
+
+                    // Dibujar área de golpeo
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(palmX * canvasElement.width, palmY * canvasElement.height, 
+                                  0.08 * canvasElement.width, 0, 2 * Math.PI);
+                    canvasCtx.strokeStyle = handColor;
+                    canvasCtx.lineWidth = 3;
+                    canvasCtx.stroke();
+
+                    // Detectar colisión con la pelota
+                    if (gameActive) {
+                        resolveHandCollision(palmX, palmY, handId, isLeft);
                     }
 
-                    currentFingerPositions[handId] = {
-                        lastFingerX: indexTip.x,
-                        lastFingerY: indexTip.y
+                    // Guardar posición para próximo frame
+                    currentHandPositions[handId] = {
+                        lastHandX: palmX,
+                        lastHandY: palmY
                     };
                 }
             }
-            
-            if (ball.isDragging && !anyHandDragging) {
-                ball.isDragging = false;
-                ball.draggingHandId = null;
-                ball.color = '#FF6B35';
-            } else if (!ball.isDragging) {
-                ball.color = '#FF6B35';
-            }
 
-            Object.assign(handStates, currentFingerPositions);
+            Object.assign(handStates, currentHandPositions);
             for (const handId in handStates) {
                 if (!results.multiHandLandmarks || !results.multiHandLandmarks[handId]) {
                     delete handStates[handId];
@@ -393,49 +420,29 @@
 
             updatePhysics();
 
-            // --- RENDERIZADO DE LA PELOTA ---
+            // --- RENDERIZAR PELOTA ---
             const px = ball.x * canvasElement.width;
             const py = ball.y * canvasElement.height;
             const r = ball.radius * Math.min(canvasElement.width, canvasElement.height);
 
-            // Sombra de la pelota
+            // Sombra
             canvasCtx.beginPath();
-            canvasCtx.arc(px, py + 5, r, 0, 2 * Math.PI);
-            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            canvasCtx.arc(px + 3, py + 3, r, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
             canvasCtx.fill();
 
-            // Pelota con textura de basketball
+            // Pelota
             canvasCtx.beginPath();
             canvasCtx.arc(px, py, r, 0, 2 * Math.PI);
             canvasCtx.fillStyle = ball.color;
             canvasCtx.fill();
             
-            // Líneas de basketball
-            canvasCtx.strokeStyle = '#000000';
-            canvasCtx.lineWidth = 2;
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(px - r, py);
-            canvasCtx.lineTo(px + r, py);
-            canvasCtx.stroke();
-            
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(px, py - r);
-            canvasCtx.lineTo(px, py + r);
-            canvasCtx.stroke();
-            
-            // Borde blanco
-            canvasCtx.beginPath();
-            canvasCtx.arc(px, py, r, 0, 2 * Math.PI);
+            // Borde
+            canvasCtx.strokeStyle = '#FFD700';
             canvasCtx.lineWidth = 3;
-            canvasCtx.strokeStyle = 'white';
             canvasCtx.stroke();
-            canvasCtx.restore();
-        }
 
-        function showError(message) {
-            errorText.textContent = message;
-            errorMsg.style.display = 'block';
-            loadingMsg.style.display = 'none';
+            canvasCtx.restore();
         }
 
         // Inicializar MediaPipe Hands
@@ -445,14 +452,14 @@
         
         hands.setOptions({
             maxNumHands: 2,
-            modelComplexity: 0, // Más ligero para móviles
+            modelComplexity: 0,
             minDetectionConfidence: 0.6,
             minTrackingConfidence: 0.6
         });
         
         hands.onResults(onResults);
 
-        // Inicializar cámara con configuración móvil optimizada
+        // Inicializar cámara
         async function startCamera() {
             try {
                 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -483,11 +490,9 @@
                 
             } catch (err) {
                 console.error('Error al iniciar cámara:', err);
-                showError('No se pudo acceder a la cámara. Por favor, permite el acceso y recarga la página.');
             }
         }
 
-        // Iniciar cuando el DOM esté listo
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startCamera);
         } else {
