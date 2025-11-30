@@ -162,12 +162,13 @@
         const BOUNCE = 0.85; // Buen rebote
         const HIT_FORCE_MULTIPLIER = 0.8; // Golpes más suaves
         const MAX_SPEED = 0.015; // Límite de velocidad
+        const MIN_BOUNCE_VELOCITY = 0.004; // Velocidad mínima para rebotar del suelo
 
         // --- OBJETO PELOTA ---
         let ball = {
             x: 0.5, y: 0.5,
             vx: 0.005, vy: 0.003, // Velocidad inicial lenta
-            radius: 0.025, // Pelota pequeña de ping pong
+            radius: 0.045, // Pelota más grande
             color: '#FFFFFF',
             lastHitBy: null // Para evitar golpes múltiples
         };
@@ -207,11 +208,18 @@
 
             const r = ball.radius;
             
-            // Límites superior e inferior (rebote)
+            // Límite inferior (suelo) - SIEMPRE REBOTA
             if (ball.y + r > 1) { 
-                ball.y = 1 - r; 
-                ball.vy *= -BOUNCE; 
+                ball.y = 1 - r;
+                // Si tiene poca velocidad, darle un impulso para que no se quede pegada
+                if (Math.abs(ball.vy) < MIN_BOUNCE_VELOCITY) {
+                    ball.vy = -MIN_BOUNCE_VELOCITY * 2; // Impulso hacia arriba
+                } else {
+                    ball.vy *= -BOUNCE;
+                }
             }
+            
+            // Límite superior - REBOTA
             if (ball.y - r < 0) { 
                 ball.y = r; 
                 ball.vy *= -BOUNCE; 
@@ -275,7 +283,7 @@
             // Evitar que la misma mano golpee múltiples veces seguidas
             if (ball.lastHitBy === handId) return false;
 
-            const handRadius = 0.08; // Área de golpeo de la mano
+            const handRadius = 0.1; // Área de golpeo más grande para pelota más grande
             const dist = calculateDistance(handX, handY, ball.x, ball.y);
 
             if (dist < ball.radius + handRadius) {
@@ -393,7 +401,7 @@
                     // Dibujar área de golpeo
                     canvasCtx.beginPath();
                     canvasCtx.arc(palmX * canvasElement.width, palmY * canvasElement.height, 
-                                  0.08 * canvasElement.width, 0, 2 * Math.PI);
+                                  0.1 * canvasElement.width, 0, 2 * Math.PI);
                     canvasCtx.strokeStyle = handColor;
                     canvasCtx.lineWidth = 3;
                     canvasCtx.stroke();
