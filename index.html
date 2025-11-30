@@ -156,13 +156,11 @@
             setTimeout(resizeCanvas, 100);
         });
 
-        // --- PARÁMETROS DE FÍSICA (MÁS LENTOS) ---
-        const GRAVITY = 0.0003; // Muy reducido
-        const FRICTION = 0.97; // Más fricción
-        const BOUNCE = 0.85; // Buen rebote
-        const HIT_FORCE_MULTIPLIER = 0.8; // Golpes más suaves
-        const MAX_SPEED = 0.015; // Límite de velocidad
-        const MIN_BOUNCE_VELOCITY = 0.004; // Velocidad mínima para rebotar del suelo
+        // --- PARÁMETROS DE FÍSICA (SIN GRAVEDAD - PING PONG REAL) ---
+        const FRICTION = 0.995; // Muy poca fricción para que mantenga velocidad
+        const BOUNCE = 0.95; // Rebote casi perfecto en todas las paredes
+        const HIT_FORCE_MULTIPLIER = 0.8; // Golpes suaves
+        const MAX_SPEED = 0.012; // Límite de velocidad
 
         // --- OBJETO PELOTA ---
         let ball = {
@@ -197,7 +195,7 @@
         function updatePhysics() {
             if (!gameActive) return;
 
-            ball.vy += GRAVITY;
+            // SIN GRAVEDAD - física de ping pong real
             ball.vx *= FRICTION;
             ball.vy *= FRICTION;
             
@@ -208,15 +206,11 @@
 
             const r = ball.radius;
             
-            // Límite inferior (suelo) - SIEMPRE REBOTA
+            // TODAS las paredes rebotan igual (superior e inferior)
+            // Límite inferior - REBOTA IGUAL QUE LAS DEMÁS
             if (ball.y + r > 1) { 
-                ball.y = 1 - r;
-                // Si tiene poca velocidad, darle un impulso para que no se quede pegada
-                if (Math.abs(ball.vy) < MIN_BOUNCE_VELOCITY) {
-                    ball.vy = -MIN_BOUNCE_VELOCITY * 2; // Impulso hacia arriba
-                } else {
-                    ball.vy *= -BOUNCE;
-                }
+                ball.y = 1 - r; 
+                ball.vy *= -BOUNCE; // Rebote normal
             }
             
             // Límite superior - REBOTA
