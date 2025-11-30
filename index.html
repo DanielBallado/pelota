@@ -133,6 +133,7 @@
         const GRAVITY = 0.0015;
         const FRICTION = 0.99;
         const BOUNCE = 0.6;
+        const HIT_FORCE_MULTIPLIER = 1.5; // Reducido de 2.5 para menos velocidad
 
         // --- OBJETO PELOTA ---
         let ball = {
@@ -161,10 +162,35 @@
                 ball.y += ball.vy;
 
                 const r = ball.radius;
-                if (ball.y + r > 1) { ball.y = 1 - r; ball.vy *= -BOUNCE; }
-                if (ball.y - r < 0) { ball.y = r; ball.vy *= -BOUNCE; }
-                if (ball.x + r > 1) { ball.x = 1 - r; ball.vx *= -BOUNCE; }
-                if (ball.x - r < 0) { ball.x = r; ball.vx *= -BOUNCE; }
+                
+                // MANTENER LA PELOTA 100% DENTRO DE LA PANTALLA
+                // Límite inferior
+                if (ball.y + r > 1) { 
+                    ball.y = 1 - r; 
+                    ball.vy *= -BOUNCE; 
+                }
+                // Límite superior
+                if (ball.y - r < 0) { 
+                    ball.y = r; 
+                    ball.vy *= -BOUNCE; 
+                }
+                // Límite derecho
+                if (ball.x + r > 1) { 
+                    ball.x = 1 - r; 
+                    ball.vx *= -BOUNCE; 
+                }
+                // Límite izquierdo
+                if (ball.x - r < 0) { 
+                    ball.x = r; 
+                    ball.vx *= -BOUNCE; 
+                }
+            } else {
+                // TAMBIÉN LIMITAR CUANDO SE ESTÁ ARRASTRANDO
+                const r = ball.radius;
+                if (ball.x + r > 1) ball.x = 1 - r;
+                if (ball.x - r < 0) ball.x = r;
+                if (ball.y + r > 1) ball.y = 1 - r;
+                if (ball.y - r < 0) ball.y = r;
             }
         }
 
